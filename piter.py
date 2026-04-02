@@ -1,6 +1,7 @@
 import sympy
 import numpy as np
 import torch
+import scipy
 
 class PiterException(Exception):
     def __init__(self , message):
@@ -238,6 +239,133 @@ class Piter:
         if not self.__initialized:
             raise PiterException("Attempting to get a numpy array from an uninitialized Piter object.")
         return np.copy(self.__m)
+
+    def getOptimalSolution(self , epochs = 2000):
+        if not self.__initialized:
+            raise PiterException("Attempting to get a numpy array from an uninitialized Piter object.")
+
+        ab = self.getNumpy()
+
+        # solving (a|-b).y == m.y == 0
+        # columns of ns contain the vectors in the null space basis of m
+
+        m = np.copy(ab)
+        m[: , -1] *= -1.0
+        ns = scipy.linalg.null_space(m)
+
+        # calculating orthogonal complement (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
+        # columns in sn contain the vectors in the complement
+
+        sn = scipy.linalg.null_space(ns.T)
+
+        # linear optimization (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
+        # vv is the all positive solution (one dimensional vector) normalized so that the last coordinate is 1
+
+        c = np.ones(sn.shape[0])
+        aub = -np.eye(sn.shape[0])
+        bub = -np.ones(sn.shape[0])
+        aeq = sn.T
+        beq = np.zeros(sn.shape[1])
+        v = scipy.optimize.linprog(c , A_ub = aub , b_ub = bub , A_eq = aeq , b_eq = beq)
+        if not v.success:
+            raise PiterException("Failed to find positive vector.\n" + str(v))
+        vv = v.x
+        vv /= vv[-1]
+
+        # optimizing entropy
+
+        import torch
+        EPSILON = 0.000001
+        
+        def getMinMax(p , v , epsilon = EPSILON , maxrange = 10000000.):
+            """
+            Args:
+                p : Vector with all positive coordinates.
+                v : Vector with all positive coordinates.
+                epsilon (optional) : Tollerance.
+
+            Returns: 
+                (alpha_0 , alpha_1)
+                If alpha_0 < alpha < alpha_1 then
+                all components of the vector
+                  r = p + alpha v
+                are positive.
+            """
+            gt0 = v >= 0
+            valpha = (-p[gt0] / v[gt0])
+            minalpha = -maxrange
+            if valpha.numel() > 0:
+                minalpha = valpha.max()
+            lt0 = v < 0
+            vvalpha = (-p[lt0] / v[lt0])
+            maxalpha = maxrange
+            if vvalpha.numel() > 0:
+                maxalpha = vvalpha.min()
+            return (minalpha + epsilon , maxalpha - epsilon)
+
+        def vecFromParam(par , start , vecs):
+            if par.shape[0] != vecs.shape[1]:
+                raise ValueError("Number of parameters does not match the number of vectors.")
+            # normalize all parameters to 0 ... 1 range
+            parn = 0.5 * (torch.sin(par) + 1.0)
+            vvv = start
+            for i in range(par.shape[0]):
+                minalpha , maxalpha = getMinMax(vvv , vecs[: , i])
+                vvv = vvv + (minalpha + parn[i] * (maxalpha - minalpha)) * vecs[: , i]
+            return vvv
+
+        nst = torch.tensor(ns)
+        vvt = torch.tensor(vv)
+        par = torch.zeros(ns.shape[1] , requires_grad = True)
+        par_p = torch.tensor(1000.0) 
+        parameters = [par , par_p]
+        opt = torch.optim.Adam(parameters , lr = 0.01)
+
+        new = None
+        newnorm = None
+        for epoch in range(epochs):
+            # par_p * par_p is from 0 ...
+            # vvt contains all positive 
+            new = vecFromParam(par , par_p * par_p * vvt, nst)
+            newnorm = new / new[-1]
+            loss = (newnorm[:-1] * torch.log(newnorm[:-1])).sum() 
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+
+        sol = newnorm.clone().detach().numpy()
+
+        return sol[:-1]
+
+        
+
+            
+
+#
+#        xs , ys , zs = [] , [] , []
+#        p = torch.tensor(vv) 
+#        valpha = torch.tensor(ns[: , 0])
+#        vbeta = torch.tensor(ns[: , 1])
+#        minalpha , maxalpha = getMinMax(p , valpha)
+#        for alpha in torch.linspace(minalpha + EPSILON , maxalpha - EPSILON , 20):
+#            new = p + alpha * valpha 
+#            minbeta , maxbeta = getMinMax(new , vbeta)
+#            for beta in torch.linspace(minbeta + EPSILON , maxbeta - EPSILON , 20):
+#                newnew = new + beta * vbeta
+#                newnorm = newnew / newnew[-1] 
+#                entropy = -(newnorm[:-1] * torch.log(newnorm[:-1])).sum()
+#                xs.append(alpha.item())
+#                ys.append(beta.item())
+#                zs.append(entropy.item())
+#
+#        fig = plt.figure()
+#        ax = fig.add_subplot(111, projection='3d')
+#        ax.set_xlabel("alpha")
+#        ax.set_ylabel("beta")
+#        ax.scatter(xs , ys , zs)
+#        plt.show()
+
+        return sn
 
     def getNumDem(self , a , b):
         if not self.__initialized:
