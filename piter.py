@@ -11,11 +11,8 @@ class PiterException(Exception):
 
 class Piter:
     """
-    An iterator over logical propositions.
-    For any two returned propositions:
-      a , b
-    the following property is met:
-      a and b is false.
+    Calculations related to probability.
+    The class is also an iterator over logical propositions.
 
     Examples:
         If f , g , h are logical propositions
@@ -44,18 +41,18 @@ class Piter:
         """
         The constructor for Piter.
 
-        Parameters : 
+        Keyword arguments : 
             symbols (set) : set of sympy symbols for logical propositions. 
                 Further symbols are added when calling added when calling addConstraint.
 
         Raises : 
-            ValueError
+            PiterException
         """
         if not isinstance(symbols , set):
-            raise ValueError("Expecting set in Piter.__init__ symbols argument.")
+            raise PiterException("Expecting set in Piter.__init__ symbols argument.")
         for s in symbols:
             if not isinstance(s , sympy.core.symbol.Symbol):
-                raise ValueError("Expecting sympy symbol set in Piter.__init__ symbols argument.")
+                raise PiterException("Expecting sympy symbol set in Piter.__init__ symbols argument.")
         self.__symbols = set()
         self.__symbols.update(symbols)
         self.__symbolsTuple = set()
@@ -75,11 +72,14 @@ class Piter:
 
         Parameters:
             a , b : Sympy logical expressions.
+        
+        Raises:
+            PiterException
         """
         if not Piter.__isLogical(a):
-            raise ValueError("Expecting logical expression in Piter.addP.")
+            raise PiterException("Expecting logical expression in Piter.addP.")
         if not Piter.__isLogical(b):
-            raise ValueError("Expecting logical expression in Piter.addP.")
+            raise PiterException("Expecting logical expression in Piter.addP.")
         if not self.__initialized:
             self.__probabilities.append([a , b , alpha])
             symbolsIna = Piter.__getSymbols(a)
@@ -103,10 +103,10 @@ class Piter:
             simplify (bool) : Default False, if True sympy.logic.simplify_logic will be applied to constraints.
 
         Raises:
-            ValueError , PiterException
+            PiterException
         """
         if not Piter.__isLogical(c):
-            raise ValueError("Expecting logical expression in Piter.addConstraint.")
+            raise PiterException("Expecting logical expression in Piter.addConstraint.")
         if not self.__initialized:
             cc = c
             if simplify:
@@ -116,8 +116,10 @@ class Piter:
             self.__symbols.update(symbolsInC)
         else:
             raise PiterException("Attempting to add constraint to finalized Piter object.")
+
     def __repr__(self):
         return ("Finished " if self.__initialized else "Unfinished ") + "Piter with " + str(len(self.__symbols)) + " symbols and " + str(len(self.__constraints)) + " constraints."
+
     def __str__(self):
         result = self.__repr__()
         result += "\nSymbols:\n"
@@ -197,7 +199,7 @@ class Piter:
                 s.remove(None)
             return s
         else:
-            raise ValueError("Expecting python logical expression in dnf form in first argument to dnfToTuple.")
+            raise PiterException("Expecting python logical expression in dnf form in first argument to dnfToTuple.")
    
     def __toSympy(self , t):
         ts = []
@@ -233,14 +235,31 @@ class Piter:
             p[1] = P(base[1] | X)
             ...
         then
-            m.p = v
+            m.p = a
         determines the probability values.
+
+        Raises:
+            PiterException
         """
         if not self.__initialized:
             raise PiterException("Attempting to get a numpy array from an uninitialized Piter object.")
         return np.copy(self.__m)
 
-    def getOptimalSolution(self , epochs = 2000):
+    def getOptimalSolution(self , epochs = 2000 , stop = None , verbose = None):
+        """
+        Attempts to find a solution that maximizes entropy.
+
+        Keyword arguments:
+            epochs (int): Maximum number of epochs for optimization.
+            stop (float): stop value
+            varbose (bool or int): If int, the value determines verbosity (epochs between printing). 
+
+        Returns:
+            Vector of probabilities that maximize the entropy.
+
+        Raises: 
+            PiterException
+        """
         if not self.__initialized:
             raise PiterException("Attempting to get a numpy array from an uninitialized Piter object.")
 
@@ -305,7 +324,7 @@ class Piter:
 
         def vecFromParam(par , start , vecs):
             if par.shape[0] != vecs.shape[1]:
-                raise ValueError("Number of parameters does not match the number of vectors.")
+                raise PiterException("Number of parameters does not match the number of vectors.")
             # normalize all parameters to 0 ... 1 range
             parn = 0.5 * (torch.sin(par) + 1.0)
             vvv = start
@@ -322,58 +341,51 @@ class Piter:
         opt = torch.optim.Adam(parameters , lr = 0.01)
 
         new = None
+        prevnorm = None
         newnorm = None
         for epoch in range(epochs):
-            # par_p * par_p is from 0 ...
-            # vvt contains all positive 
+            if newnorm is not None:
+                prevnorm = newnorm.clone().detach()
             new = vecFromParam(par , par_p * par_p * vvt, nst)
             newnorm = new / new[-1]
+            if newnorm is not None and prevnorm is not None:
+                if stop is not None and torch.max(torch.abs((newnorm[:-1] - prevnorm[:-1]))).item() < stop:
+                    break
             loss = (newnorm[:-1] * torch.log(newnorm[:-1])).sum() 
             opt.zero_grad()
             loss.backward()
             opt.step()
+            if isinstance(verbose , int) and epoch % verbose == 0:
+                print(epoch , epochs , -loss.item())
 
         sol = newnorm.clone().detach().numpy()
 
         return sol[:-1]
 
-        
-
-            
-
-#
-#        xs , ys , zs = [] , [] , []
-#        p = torch.tensor(vv) 
-#        valpha = torch.tensor(ns[: , 0])
-#        vbeta = torch.tensor(ns[: , 1])
-#        minalpha , maxalpha = getMinMax(p , valpha)
-#        for alpha in torch.linspace(minalpha + EPSILON , maxalpha - EPSILON , 20):
-#            new = p + alpha * valpha 
-#            minbeta , maxbeta = getMinMax(new , vbeta)
-#            for beta in torch.linspace(minbeta + EPSILON , maxbeta - EPSILON , 20):
-#                newnew = new + beta * vbeta
-#                newnorm = newnew / newnew[-1] 
-#                entropy = -(newnorm[:-1] * torch.log(newnorm[:-1])).sum()
-#                xs.append(alpha.item())
-#                ys.append(beta.item())
-#                zs.append(entropy.item())
-#
-#        fig = plt.figure()
-#        ax = fig.add_subplot(111, projection='3d')
-#        ax.set_xlabel("alpha")
-#        ax.set_ylabel("beta")
-#        ax.scatter(xs , ys , zs)
-#        plt.show()
-
-        return sn
-
     def getNumDem(self , a , b):
+        """
+        Used to calculate any probability P(a | b x) given 
+        a vector of probabilities.
+
+        Args:
+            a , b (bool): Logical expressions.
+
+        Returns:
+            Tuple (num , dem). If x is the vector of probabilities
+            then np.sum(num * x) / np.sum(dem * x) is the probability
+            P(a | b x).
+            
+        """
         if not self.__initialized:
             raise PiterException("Attempting to get numpy arrays from an uninitialized Piter object.")
         if not Piter.__isLogical(a):
-            raise ValueError("Expecting logical expression in Piter.getNumDem.")
+            raise PiterException("Expecting logical expression in Piter.getNumDem.")
         if not Piter.__isLogical(b):
-            raise ValueError("Expecting logical expression in Piter.getNumDem.")
+            raise PiterException("Expecting logical expression in Piter.getNumDem.")
+        if not self.__getSymbols(a).issubset(self.__symbols):
+            raise PiterException("New symbols introduced in a.")
+        if not self.__getSymbols(b).issubset(self.__symbols):
+            raise PiterException("New symbols introduced in b.")
         num = np.zeros((self.__m.shape[1] - 1 , ) , dtype = np.float64)
         dem = np.zeros((self.__m.shape[1] - 1 , ) , dtype = np.float64)
         for idx , x in enumerate(self.__baseElements):
@@ -387,20 +399,18 @@ class Piter:
     def finalize(self , simplifydnf = False):
         """
         Finalize self object. The iterator can be used only if this method is used.
+        All public methods except `addP` and `addConstraint` require that the object
+        is finalized.
 
         Keyword parameters:
             simplify (bool) : Default False. If True sympy.logic.to_dnf(... , simplify = True) will be used
                 to convert constraints to DNF form. Using True may impact speed.
         """
-        #print("finalize")
         self.__symbolsTuple = tuple(self.__symbols)
-        #def toMathematica(x):
-        #    return str(x).replace("&" , "&&").replace("|" , "||").replace("~" , "!")
         self.__constraintsDnf = sympy.logic.to_dnf(sympy.And(*self.__constraints) , simplify = simplifydnf)
-        #print("self.__constraintsDnf" , toMathematica(self.__constraintsDnf))
         dnf = self.__dnfToTupleSet(self.__constraintsDnf)
         self.__constraintsTupleSet = set()
-        #self.__constraintsTupleSet = self.__dnfToTupleSet(self.__constraintsDnf)
+        
         # remove elements from dnf that are less general
         # for instance from {(0 , 0 , 1) , (1 , 1 , 1)}
         # remove (1 , 1 , 1)
@@ -415,36 +425,29 @@ class Piter:
                     addToNew = addToNew and (not c2MoreGeneral)
             if addToNew:
                 self.__constraintsTupleSet.add(c1)
+        
         # iterate over only the conjunctions in the dnf
         # create a set of unique elements then
         # then turn this into a list
         self.__rejections = 0 
         baseElements = set()
-        #print(self.__constraintsTupleSet)
         for t in self.__constraintsTupleSet:
-            #print("t : " , t , self.__symbolsTuple)
             zeroPositions = []
             for position , item in enumerate(t):
                 if item == 0:
                     zeroPositions.append(position)
             r = [x for x in t]
             for i in range(2**len(zeroPositions)):
-                #print("  i : " , i)
                 for j in range(len(zeroPositions)):
                     r[zeroPositions[j]] = 2 * ((i // 2**j) % 2) - 1
                 rt = tuple(r)
                 if rt in baseElements:
                     self.__rejections += 1
-                #else:
-                    #print("  toSympy(rt) : " , toSympy(rt))
-                    #print("  satisfiable : " , sympy.logic.satisfiable(self.__constraintsDnf & toSympy(rt)))
-                #if sympy.logic.satisfiable(self.__constraintsDnf & toSympy(rt)) is not False:
-                    #baseElements.add(rt)
                 baseElements.add(rt)
         self.__baseElements = list(baseElements)       
 
         self.__m = np.zeros((len(self.__probabilities) + 1 , len(self.__baseElements) + 1) , dtype = np.float64)
-        self.__m[0 , :] = 1.0
+        self.__m[0 , :] = 1.0 # is this necessary?
 
         row = 1
         for a , b , alpha in self.__probabilities:
