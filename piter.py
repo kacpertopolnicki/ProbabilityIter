@@ -3,6 +3,20 @@ import numpy as np
 import torch
 import scipy
 
+import logging
+import os
+
+LOG_DIRECTORY = os.path.dirname(os.path.realpath(__file__))
+logging.basicConfig(filename = os.path.join(LOG_DIRECTORY , "piter_log") , 
+                    filemode = "w" , 
+                    format='%(message)s   [%(levelname)s|%(funcName)s|%(filename)s|%(lineno)d]')
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+
+# TODO
+NP_DTYPE = np.float64
+TR_DTYPE = torch.float64
+
 class PiterException(Exception):
     def __init__(self , message):
         self.__message = message
@@ -39,8 +53,6 @@ class Piter:
     """
     def __init__(self , symbols = set()):
         """
-        The constructor for Piter.
-
         Keyword arguments : 
             symbols (set) : set of sympy symbols for logical propositions. 
                 Further symbols are added when calling added when calling addConstraint.
@@ -55,7 +67,7 @@ class Piter:
                 raise PiterException("Expecting sympy symbol set in Piter.__init__ symbols argument.")
         self.__symbols = set()
         self.__symbols.update(symbols)
-        self.__symbolsTuple = set()
+        self.__symbolsTuple = tuple()
         self.__constraints = set()
         self.__constraintsDnf = None
         self.__constraintsTupleSet = None
@@ -68,7 +80,7 @@ class Piter:
         """
         Add probability value 
             P(a | b x) == alpha
-        where x is the previous knowlege.
+        where x represents previous knowlege.
 
         Parameters:
             a , b : Sympy logical expressions.
@@ -93,7 +105,7 @@ class Piter:
     def addConstraint(self , c , simplify = False):
         """
         Add constraint. Only propositions that are consistent with all constraints
-        are returned by the iterator.
+        are returned by the iterator and used to in creating the set of linear equations.
 
         Parameters:
             c : Sympy logical expression representing the constraint, if new symbols appear in c 
@@ -263,7 +275,15 @@ class Piter:
         if not self.__initialized:
             raise PiterException("Attempting to get a numpy array from an uninitialized Piter object.")
 
+        # tollerance for comparing with 0
+        TOLLERANCE = 10e-16
+
+        # margin for calculating positive vector range
+        EPSILON = 0.000001
+ 
         ab = self.getNumpy()
+
+        logger.debug("ab.shape : " + str(ab.shape))
 
         # solving (a|-b).y == m.y == 0
         # columns of ns contain the vectors in the null space basis of m
@@ -271,11 +291,19 @@ class Piter:
         m = np.copy(ab)
         m[: , -1] *= -1.0
         ns = scipy.linalg.null_space(m)
+        logger.debug("ns.shape : " + str(ns.shape))
+        if ns.shape[1] == 1:
+            logger.debug("Only one null space vector, returning solution.")
+            sol = (ns / ns[-1])[:-1 , 0]
+            if not np.all(sol >= -TOLLERANCE):
+                raise PiterException("Could not find all positive solution.")
+            return sol
 
         # calculating orthogonal complement (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
         # columns in sn contain the vectors in the complement
 
         sn = scipy.linalg.null_space(ns.T)
+        logger.debug("sn.shape : " + str(sn.shape))
 
         # linear optimization (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
         # vv is the all positive solution (one dimensional vector) normalized so that the last coordinate is 1
@@ -290,11 +318,11 @@ class Piter:
             raise PiterException("Failed to find positive vector.\n" + str(v))
         vv = v.x
         vv /= vv[-1]
+        logger.debug("vv.shape : " + str(vv.shape))
 
         # optimizing entropy
 
         import torch
-        EPSILON = 0.000001
         
         def getMinMax(p , v , epsilon = EPSILON , maxrange = 10000000.):
             """
@@ -356,7 +384,7 @@ class Piter:
             loss.backward()
             opt.step()
             if isinstance(verbose , int) and epoch % verbose == 0:
-                print(epoch , epochs , -loss.item())
+                logger.debug(str(epoch) + " " + str(epochs) + " " + str(-loss.item()))
 
         sol = newnorm.clone().detach().numpy()
 
@@ -382,9 +410,9 @@ class Piter:
             raise PiterException("Expecting logical expression in Piter.getNumDem.")
         if not Piter.__isLogical(b):
             raise PiterException("Expecting logical expression in Piter.getNumDem.")
-        if not self.__getSymbols(a).issubset(self.__symbols):
+        if not Piter.__getSymbols(a).issubset(self.__symbols):
             raise PiterException("New symbols introduced in a.")
-        if not self.__getSymbols(b).issubset(self.__symbols):
+        if not Piter.__getSymbols(b).issubset(self.__symbols):
             raise PiterException("New symbols introduced in b.")
         num = np.zeros((self.__m.shape[1] - 1 , ) , dtype = np.float64)
         dem = np.zeros((self.__m.shape[1] - 1 , ) , dtype = np.float64)
@@ -406,7 +434,10 @@ class Piter:
             simplify (bool) : Default False. If True sympy.logic.to_dnf(... , simplify = True) will be used
                 to convert constraints to DNF form. Using True may impact speed.
         """
-        self.__symbolsTuple = tuple(self.__symbols)
+        self.__symbolsTuple = list(self.__symbols)
+        from functools import cmp_to_key
+        self.__symbolsTuple.sort(key = cmp_to_key(lambda x , y : x.compare(y)))
+        self.__symbolsTuple = tuple(self.__symbolsTuple)
         self.__constraintsDnf = sympy.logic.to_dnf(sympy.And(*self.__constraints) , simplify = simplifydnf)
         dnf = self.__dnfToTupleSet(self.__constraintsDnf)
         self.__constraintsTupleSet = set()
@@ -414,7 +445,7 @@ class Piter:
         # remove elements from dnf that are less general
         # for instance from {(0 , 0 , 1) , (1 , 1 , 1)}
         # remove (1 , 1 , 1)
-        # TODO : this is wrong, or is it
+        # TODO : this is wrong, or is it, this is ok
         for c1 in dnf:
             addToNew = True
             for c2 in dnf:
@@ -446,6 +477,17 @@ class Piter:
                 baseElements.add(rt)
         self.__baseElements = list(baseElements)       
 
+        def sortfun(tp):
+            val = 0
+            mul = 1
+            for x in reversed(tp):
+                val += ((x + 1) // 2) * mul
+                mul *= 2
+            #print(tp , val , self.__symbols , self.__symbolsTuple)
+            return val
+
+        self.__baseElements.sort(key = sortfun)
+
         self.__m = np.zeros((len(self.__probabilities) + 1 , len(self.__baseElements) + 1) , dtype = np.float64)
         self.__m[0 , :] = 1.0 # is this necessary?
 
@@ -472,9 +514,124 @@ class Piter:
 import unittest
 
 class TestPiter(unittest.TestCase):
-    def test_all(self):
+    def test_optimized_solution(self):
+        from sympy.abc import d , m , a , b , c , e , f , g , h
+        from sympy import true
+
+        logger.debug("starting test_optimized_solution")
+       
+        # stopping value
+        STOP = 0.00001
+
+        # tollerance for checking if distrbution us uniform
+        TOLLERANCE_UNIFORM = 0.001
+
+        # tollerance for comparing with 0
+        TOLLERANCE = 10e-12
+        
+        p = Piter({d , m , a , b , e , f , g , h})
+        p.addP(e & ~a & ~b & ~d & ~f & ~m & g & h, true , 0.1)
+        p.addP(b & f & m & ~a & ~d & ~e & g & h , true , 0.1)
+        p.finalize()
+
+        rest = 0.8 / (len(p) - 2)
+
+        sol = p.getOptimalSolution(verbose = 1 , epochs = 3000 , stop = STOP)
+
+        maxabsdif = 0.0
+        i = 0
+        for expr in p:
+            if expr == e & ~a & ~b & ~d & ~f & ~m & g & h:
+                self.assertTrue(np.abs(sol[i] - 0.1) < TOLLERANCE)
+            elif expr == b & f & m & ~a & ~d & ~e & g & h:
+                self.assertTrue(np.abs(sol[i] - 0.1) < TOLLERANCE)
+            else:
+                self.assertTrue(np.abs(sol[i] - rest) < TOLLERANCE_UNIFORM)
+            i += 1
+
+        print(maxabsdif)
+
+        logger.debug("finished test_optimized_solution")
+
+    def test_unique_solution(self):
+        from sympy.abc import d , m
+        from sympy import true
+
+        logger.debug("starting test_unique_solution")
+
+        # tollerance for comparing with 0
+        TOLLERANCE = 10e-12
+
+        p = Piter({d , m})
+        p.addP(m , true , 0.0001)
+        p.addP(d , true , 0.001)
+        p.addP(d , m , 1.0)
+        p.finalize()
+
+        ab = p.getNumpy()
+        a = ab[: , :-1]
+        b = ab[: , -1]
+        x = np.linalg.solve(a , b)
+
+        num , dem = p.getNumDem(m , d)
+        p_md_1 = np.sum(num * x) / np.sum(dem * x) 
+
+        num , dem = p.getNumDem(~m , d)
+        p_mbard_1 = np.sum(num * x) / np.sum(dem * x) 
+
+        self.assertTrue(np.abs(p_md_1 - 0.1) < TOLLERANCE , msg = "P(m|d) : " + str(p_md_1)) 
+        self.assertTrue(np.abs(p_md_1 + p_mbard_1 - 1.0) < TOLLERANCE , msg = "P(m|d) + P(~m|d) : " + str(p_md_1 + p_mbard_1))
+        
+        x_1 = p.getOptimalSolution()
+
+        num , dem = p.getNumDem(m , d)
+        p_md_2 = np.sum(num * x_1) / np.sum(dem * x_1) 
+
+        num , dem = p.getNumDem(~m , d)
+        p_mbard_2 = np.sum(num * x_1) / np.sum(dem * x_1) 
+
+        self.assertTrue(np.abs(p_md_2 - p_md_1) < TOLLERANCE , msg = "P(m|d) : " + str(p_md_2))
+        self.assertTrue(np.abs(p_mbard_2 - p_mbard_1) < TOLLERANCE , msg = "P(~m|d) : " + str(p_md_2))
+
+        p = Piter({d , m})
+        p.addConstraint(~(~d & m))
+        p.addP(m , true , 0.0001)
+        p.addP(d , true , 0.001)
+        p.finalize()
+
+        ab = p.getNumpy()
+
+        a = ab[: , :-1]
+        b = ab[: , -1]
+        x = np.linalg.solve(a , b)
+
+        num , dem = p.getNumDem(m , d)
+        p_md_3 = np.sum(num * x) / np.sum(dem * x)
+        
+        num , dem = p.getNumDem(~m , d)
+        p_mbard_3 = np.sum(num * x) / np.sum(dem * x)
+
+        self.assertTrue(np.abs(p_md_3 - 0.1) < TOLLERANCE , msg = "P(m|d) : " + str(p_md_1)) 
+        self.assertTrue(np.abs(p_md_3 + p_mbard_3 - 1.0) < TOLLERANCE , msg = "P(m|d) + P(~m|d) : " + str(p_md_1 + p_mbard_1))
+
+        x_1 = p.getOptimalSolution()
+
+        num , dem = p.getNumDem(m , d)
+        p_md_4 = np.sum(num * x_1) / np.sum(dem * x_1) 
+
+        num , dem = p.getNumDem(~m , d)
+        p_mbard_4 = np.sum(num * x_1) / np.sum(dem * x_1) 
+ 
+        self.assertTrue(np.abs(p_md_4 - p_md_3) < TOLLERANCE , msg = "P(m|d) : " + str(p_md_2))
+        self.assertTrue(np.abs(p_mbard_4 - p_mbard_3) < TOLLERANCE , msg = "P(~m|d) : " + str(p_md_2))
+
+        logger.debug("finished test_unique_solution")
+
+    def test_logic(self):
 
         from sympy.abc import f , g , h , i , j
+
+        logger.debug("starting test_logic")
 
         smpl = [(True , True) , (True , False) , (False , True) , (False , False)]
         
@@ -708,6 +865,8 @@ class TestPiter(unittest.TestCase):
             a = set(p)
             b = set()
             self.assertEqual(a , b , msg = "s1 , s2 : " + str(s1) + " , " + str(s2))
+
+            logger.debug("finished test_logic")
 if __name__ == "__main__" :
     unittest.main()
 
