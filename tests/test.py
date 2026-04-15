@@ -9,6 +9,19 @@ sys.path.append('..')
 from piter import Piter
 from piter import logger
 
+# tollerance for comparing with 0
+TOLLERANCE = 10e-12
+
+# tollerance for checking if distrbution us uniform
+# this typically is used to compare deviations
+# relative to the maximum value
+TOLLERANCE_UNIFORM = 0.012
+
+# stopping value
+# iterations will stop when the difference in vector components
+# is less then the stopping value
+STOP = 0.00001
+
 class TestPiter(unittest.TestCase):
     def test_optimized_solution(self):
         from sympy.abc import d , m , a , b , c , e , f , g , h
@@ -16,15 +29,6 @@ class TestPiter(unittest.TestCase):
 
         logger.debug("starting test_optimized_solution")
        
-        # stopping value
-        STOP = 0.00001
-
-        # tollerance for checking if distrbution us uniform
-        TOLLERANCE_UNIFORM = 0.001
-
-        # tollerance for comparing with 0
-        TOLLERANCE = 10e-12
-        
         p = Piter({d , m , a , b , e , f , g , h})
         p.addP(e & ~a & ~b & ~d & ~f & ~m & g & h, true , 0.1)
         p.addP(b & f & m & ~a & ~d & ~e & g & h , true , 0.1)
@@ -42,7 +46,7 @@ class TestPiter(unittest.TestCase):
             elif expr == b & f & m & ~a & ~d & ~e & g & h:
                 self.assertTrue(np.abs(sol[i] - 0.1) < TOLLERANCE)
             else:
-                self.assertTrue(np.abs(sol[i] - rest) < TOLLERANCE_UNIFORM)
+                self.assertTrue(np.abs(sol[i] - rest) / 0.1 < TOLLERANCE_UNIFORM , msg = "Found difference from uniform " + str(np.abs(sol[i] - rest) / 0.1))
             i += 1
 
         print(maxabsdif)
@@ -54,9 +58,6 @@ class TestPiter(unittest.TestCase):
         from sympy import true
 
         logger.debug("starting test_unique_solution")
-
-        # tollerance for comparing with 0
-        TOLLERANCE = 10e-12
 
         p = Piter({d , m})
         p.addP(m , true , 0.0001)

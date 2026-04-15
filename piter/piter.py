@@ -9,9 +9,17 @@ from .piterexception import PiterException
 from .piterlog import logger
 
 
-# TODO
+# floating point type for numpy
 NP_DTYPE = np.float64
+
+# floating point type for torch
 TR_DTYPE = torch.float64
+
+# optimizer
+OPTIMIZER = torch.optim.Adam
+
+# learning rate
+LEARNING_RATE = 0.01
 
 class Piter:
     """
@@ -298,11 +306,11 @@ class Piter:
         # linear optimization (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
         # vv is the all positive solution (one dimensional vector) normalized so that the last coordinate is 1
 
-        c = np.ones(sn.shape[0])
-        aub = -np.eye(sn.shape[0])
-        bub = -np.ones(sn.shape[0])
+        c = np.ones(sn.shape[0] , dtype = NP_DTYPE)
+        aub = -np.eye(sn.shape[0] , dtype = NP_DTYPE)
+        bub = -np.ones(sn.shape[0] , dtype = NP_DTYPE)
         aeq = sn.T
-        beq = np.zeros(sn.shape[1])
+        beq = np.zeros(sn.shape[1] , dtype = NP_DTYPE)
         v = scipy.optimize.linprog(c , A_ub = aub , b_ub = bub , A_eq = aeq , b_eq = beq)
         if not v.success:
             raise PiterException("Failed to find positive vector.\n" + str(v))
@@ -351,12 +359,12 @@ class Piter:
                 vvv = vvv + (minalpha + parn[i] * (maxalpha - minalpha)) * vecs[: , i]
             return vvv
 
-        nst = torch.tensor(ns)
-        vvt = torch.tensor(vv)
-        par = torch.zeros(ns.shape[1] , requires_grad = True)
-        par_p = torch.tensor(1000.0) 
+        nst = torch.tensor(ns , dtype = TR_DTYPE)
+        vvt = torch.tensor(vv , dtype = TR_DTYPE)
+        par = torch.zeros(ns.shape[1] , dtype = TR_DTYPE , requires_grad = True)
+        par_p = torch.tensor(1000.0 , dtype = TR_DTYPE) 
         parameters = [par , par_p]
-        opt = torch.optim.Adam(parameters , lr = 0.01)
+        opt = OPTIMIZER(parameters , lr = LEARNING_RATE)
 
         new = None
         prevnorm = None
@@ -404,8 +412,8 @@ class Piter:
             raise PiterException("New symbols introduced in a.")
         if not Piter.__getSymbols(b).issubset(self.__symbols):
             raise PiterException("New symbols introduced in b.")
-        num = np.zeros((self.__m.shape[1] - 1 , ) , dtype = np.float64)
-        dem = np.zeros((self.__m.shape[1] - 1 , ) , dtype = np.float64)
+        num = np.zeros((self.__m.shape[1] - 1 , ) , dtype = NP_DTYPE)
+        dem = np.zeros((self.__m.shape[1] - 1 , ) , dtype = NP_DTYPE)
         for idx , x in enumerate(self.__baseElements):
             s = self.__toSympy(x)
             if sympy.logic.inference.satisfiable(a & b & s) is not False:
@@ -478,7 +486,7 @@ class Piter:
 
         self.__baseElements.sort(key = sortfun)
 
-        self.__m = np.zeros((len(self.__probabilities) + 1 , len(self.__baseElements) + 1) , dtype = np.float64)
+        self.__m = np.zeros((len(self.__probabilities) + 1 , len(self.__baseElements) + 1) , dtype = NP_DTYPE)
         self.__m[0 , :] = 1.0 # is this necessary?
 
         row = 1
