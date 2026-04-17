@@ -1,8 +1,47 @@
 # ProbabilityIter
 
-Small library of python code for calculations related to probability.
+Probability solver for discreete logical statements.
 
-## Probability as logic
+## Installation
+
+It is recommended to use the library in a separate python environment. 
+An environment named *temp* may be created using:
+```
+$ python -m venv temp 
+``` 
+This created the directory `temp` with the relavent files.
+Next the environment needs to be activated:
+```
+$ . <path to temp direcory>/bin/activate
+```
+and an activated environment might be indicated
+by a change to the prompt. 
+
+To install dependencies, inside the activated environment, run:
+```
+pip install -r requirements.txt
+```
+Alternatively installing the python libraries: *numpy*, *torch*, *scipy*, and
+*sympy* using `pip install numpy torch scipy sympy` schould work as long
+as the api of these libraries did not change from the versions in *requirements.txt*.
+
+To check if the installation of dependencies was successfull, inside the *tests* directories
+try:
+```
+(temp) $ python test.py -v
+```
+This will run unit tests, success of each test schould be indicated by a green `ok`,
+and the success of all tests by a green `OK`.
+
+Once dependencies are installed the library may imported inside python using 
+`import piter`.
+Finally, to deactivate the
+environment run:
+```
+(temp) $ deactivate
+```
+
+<!--## Probability as logic
 
 The standard axioms of probability were first 
 written down by [Andrey Kolmogorov](https://en.wikipedia.org/wiki/Probability_axioms).
@@ -55,4 +94,4 @@ There is a lot of room for improvement.
 - Generating the basis using constraints is an expensive operation.
 - Currently all the solution for probabilities may be obtained only
   after all relavent information is supplied. Need to add generation
-  of entropy maximizing solutions.
+  of entropy maximizing solutions.-->

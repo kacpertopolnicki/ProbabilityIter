@@ -72,6 +72,7 @@ class Piter:
         self.__rejections = None # for denuging, ideally this is 0
         self.__initialized = False
         self.__probabilities = []
+        self.__probabilities_rows = dict()
         self.__m = None
 
     def addP(self , a , b , alpha):
@@ -491,20 +492,24 @@ class Piter:
 
         row = 1
         for a , b , alpha in self.__probabilities:
+            alphas = []
             if b == sympy.true:
                 for idx , x in enumerate(self.__baseElements):
                     s = self.__toSympy(x)
                     if sympy.logic.inference.satisfiable(a & s) is not False:
                         self.__m[row , idx] += 1.0
+                alphas.append(self.__m.shape[1] - 1)
                 self.__m[row , -1] = alpha
             else:
                 for idx , x in enumerate(self.__baseElements):
                     s = self.__toSympy(x)
                     if sympy.logic.inference.satisfiable(b & s) is not False:
+                        alphas.append(idx)
                         self.__m[row , idx] += alpha
                     if sympy.logic.inference.satisfiable(a & b & s) is not False:
                         self.__m[row , idx] -= 1.0
                 self.__m[row , -1] = 0.0
+            self.__probabilities_rows[(a , b)] = (row , alphas)
             row += 1
 
         self.__initialized = True
