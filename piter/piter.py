@@ -256,7 +256,11 @@ class Piter:
             raise PiterException("Attempting to get a numpy array from an uninitialized Piter object.")
         return np.copy(self.__m)
 
-    def getOptimalSolution(self , epochs = 2000 , stop = None , verbose = None):
+    def listStatements(self):
+        for a , b in self.__probabilities_rows:
+            print("P(" , a , "," , b , ") = " , self.__probabilities_rows[(a , b)][2])
+
+    def getOptimalSolution(self , epochs = 2000 , stop = None , verbose = None , startparameters = None , method = "default"):
         """
         Attempts to find a solution that maximizes entropy.
 
@@ -274,6 +278,8 @@ class Piter:
         if not self.__initialized:
             raise PiterException("Attempting to get a numpy array from an uninitialized Piter object.")
 
+        import torch
+        
         # tollerance for comparing with 0
         TOLLERANCE = 10e-16
 
@@ -304,30 +310,118 @@ class Piter:
         sn = scipy.linalg.null_space(ns.T)
         logger.debug("sn.shape : " + str(sn.shape))
 
-        # linear optimization (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
-        # vv is the all positive solution (one dimensional vector) normalized so that the last coordinate is 1
+        vv = None
+        if method == "default": 
+            #logger.debug("{}".format(ns))
+            # linear optimization (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
+            # vv is the all positive solution (one dimensional vector) normalized so that the last coordinate is 1
 
-        c = np.ones(sn.shape[0] , dtype = NP_DTYPE)
-        aub = -np.eye(sn.shape[0] , dtype = NP_DTYPE)
-        bub = -np.ones(sn.shape[0] , dtype = NP_DTYPE)
-        aeq = sn.T
-        beq = np.zeros(sn.shape[1] , dtype = NP_DTYPE)
-        v = scipy.optimize.linprog(c , A_ub = aub , b_ub = bub , A_eq = aeq , b_eq = beq)
-        if not v.success:
-            raise PiterException("Failed to find positive vector.\n" + str(v))
-        vv = v.x
-        vv /= vv[-1]
+            c = np.ones(sn.shape[0] , dtype = NP_DTYPE)
+            aub = -np.eye(sn.shape[0] , dtype = NP_DTYPE)
+            bub = -np.ones(sn.shape[0] , dtype = NP_DTYPE)
+            aeq = sn.T
+            beq = np.zeros(sn.shape[1] , dtype = NP_DTYPE)
+            v = scipy.optimize.linprog(c , A_ub = aub , b_ub = bub , A_eq = aeq , b_eq = beq)
+            if not v.success:
+                raise PiterException("Failed to find positive vector.\n" + str(v))
+            vv = v.x
+            vv /= vv[-1]
+            #logger.debug("vv : {}".format(vv))
+            #logger.debug("vv check : {}".format(np.sum(vv[:-1])))
+#        elif method == "project":
+#            nst = torch.tensor(ns , dtype = TR_DTYPE)
+#            params = torch.ones(ns.shape[1] , dtype = TR_DTYPE , requires_grad = True)
+#
+#            parameters = [params]
+#            #opt = OPTIMIZER(parameters , lr = LEARNING_RATE)
+#            # sauce : https://docs.pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ReduceLROnPlateau.html
+#            opt = torch.optim.SGD(parameters , lr = LEARNING_RATE , momentum = 0.9)
+#            for epoch in range(epochs):
+#                somesol = torch.sum(params[None , :] * nst , axis = 1)
+#                somesol = somesol / somesol[-1]
+#                loss = -torch.min(somesol) * torch.norm(somesol)
+#                logger.debug("{} {}".format(epoch , loss.item()))
+#                opt.zero_grad()
+#                loss.backward()
+#                logger.debug("{} {}".format(epoch , somesol))
+#                logger.debug("{} {}".format(epoch , params.grad))
+#                opt.step()
+#                for g in opt.param_groups:
+#                    g["lr"] = 0.0000001 * (epoch / epochs) + LEARNING_RATE * (1. -  (epoch / epochs))
+#        elif method == "lagrange":
+#
+#            THICKNESS = 0.00001
+#
+#            nst = torch.tensor(ns , dtype = TR_DTYPE)
+#            params = torch.ones(ns.shape[1] , dtype = TR_DTYPE , requires_grad = True)
+#            lam = torch.tensor(1.0 , dtype = TR_DTYPE , requires_grad = True)
+#
+#            parameters = [params , lam]
+#            opt = OPTIMIZER(parameters , lr = LEARNING_RATE * 2)
+#            for epoch in range(10 * epochs):
+#                somesol = torch.sum(params[None , :] * nst , axis = 1)
+#                somesol = somesol / somesol[-1] 
+#
+#                pr = torch.where(somesol[:-1] < THICKNESS , THICKNESS , somesol[:-1])
+#                pr = pr / pr[-1]
+#
+#                entropy = -(pr * torch.log(pr)).sum() 
+#
+#                mult = (-torch.min(somesol) * torch.norm(somesol) - 0.0)
+#
+#                loss = -entropy + lam * mult
+#
+#                logger.debug("{} {} {}".format(epoch , entropy , mult))
+#                
+#                opt.zero_grad()
+#                loss.backward()
+#                logger.debug("lam.grad : {}".format(lam.grad))
+#                opt.step()
+#
+#
+
+
+            # !!!!!!
+            # This method does not work in general !!!!!
+            # Counter examples can be generated using counter.nb 
+            # !!!!!!
+            #maxdot = 0.0
+            #maxdiag = 0.0
+            #for i in range(ns.shape[1]):
+            #    for j in range(ns.shape[1]):
+            #        dt = np.dot(ns[: , i] , ns[: , j])
+            #        if i !=j:
+            #            if abs(dt) > maxdot:
+            #                maxdot = abs(dt)
+            #        else:
+            #            if abs(dt - 1.0) > maxdiag:
+            #                maxdiag = abs(dt - 1.0)
+            #logger.debug("maxdot : {}".format(maxdot))
+            #logger.debug("maxdiag : {}".format(maxdiag))
+
+            # (1 , 1 , ...)^T \cdot y = \sum_{i} y_{i}
+            #onecoord = np.sum(ns , axis = 0)
+            #logger.debug("onecoord.shape : {}".format(onecoord.shape))
+            #onevec = np.sum(ns * onecoord[None , :] , axis = 1)
+            #sol = np.sum(ns , axis = 1)
+            #vv = onevec / onevec[-1]
+            #logger.debug("tot : {}".format(np.sum(vv[:-1])))
+            #for i in range(onevec.shape[0]):
+            #    logger.debug("i : {} , vv[i] : {}".format(i , vv[i]))
+            #chk = m @ vv
+            #logger.debug("max abs(chk) : {}".format(np.max(np.abs(chk))))
+        else:
+            raise ValueError("Method " + str(method) + " needs to be default or project.")
+
         logger.debug("vv.shape : " + str(vv.shape))
 
         # optimizing entropy
-
-        import torch
-        
+ 
         def getMinMax(p , v , epsilon = EPSILON , maxrange = 10000000.):
             """
             Args:
                 p : Vector with all positive coordinates.
-                v : Vector with all positive coordinates.
+                v : Vector which might notain negative coordinates.
                 epsilon (optional) : Tollerance.
 
             Returns: 
@@ -357,13 +451,19 @@ class Piter:
             vvv = start
             for i in range(par.shape[0]):
                 minalpha , maxalpha = getMinMax(vvv , vecs[: , i])
+                #logger.debug("minalpha : {} , maxalpha : {}".format(minalpha , maxalpha))
                 vvv = vvv + (minalpha + parn[i] * (maxalpha - minalpha)) * vecs[: , i]
             return vvv
 
         nst = torch.tensor(ns , dtype = TR_DTYPE)
         vvt = torch.tensor(vv , dtype = TR_DTYPE)
-        par = torch.zeros(ns.shape[1] , dtype = TR_DTYPE , requires_grad = True)
-        par_p = torch.tensor(1000.0 , dtype = TR_DTYPE) 
+
+        if startparameters is None:
+            par = torch.zeros(ns.shape[1] , dtype = TR_DTYPE , requires_grad = True)
+            par_p = torch.tensor(1000.0 , dtype = TR_DTYPE) 
+        else:
+            par , par_p = startparameters
+
         parameters = [par , par_p]
         opt = OPTIMIZER(parameters , lr = LEARNING_RATE)
 
@@ -384,6 +484,7 @@ class Piter:
             opt.step()
             if isinstance(verbose , int) and epoch % verbose == 0:
                 logger.debug(str(epoch) + " " + str(epochs) + " " + str(-loss.item()))
+                #logger.debug("{} {}".format(epoch , torch.sum(newnorm[:-1])))
 
         sol = newnorm.clone().detach().numpy()
 
@@ -433,6 +534,8 @@ class Piter:
             simplify (bool) : Default False. If True sympy.logic.to_dnf(... , simplify = True) will be used
                 to convert constraints to DNF form. Using True may impact speed.
         """
+        if self.__initialized:
+            raise PiterException("Attempting to finalize a initialized object.")
         self.__symbolsTuple = list(self.__symbols)
         from functools import cmp_to_key
         self.__symbolsTuple.sort(key = cmp_to_key(lambda x , y : x.compare(y)))
@@ -509,7 +612,7 @@ class Piter:
                     if sympy.logic.inference.satisfiable(a & b & s) is not False:
                         self.__m[row , idx] -= 1.0
                 self.__m[row , -1] = 0.0
-            self.__probabilities_rows[(a , b)] = (row , alphas)
+            self.__probabilities_rows[(a , b)] = (row , alphas , alpha)
             row += 1
 
         self.__initialized = True

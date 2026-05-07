@@ -49,11 +49,79 @@ class TestPiter(unittest.TestCase):
                 self.assertTrue(np.abs(sol[i] - rest) / 0.1 < TOLLERANCE_UNIFORM , msg = "Found difference from uniform " + str(np.abs(sol[i] - rest) / 0.1))
             i += 1
 
-        print(maxabsdif)
+        #print(maxabsdif)
 
         logger.debug("finished test_optimized_solution")
 
-    def test_unique_solution(self):
+    def test_optimized_solution_MH(self):
+        # sauce : https://bechtel.colorado.edu/~balajir/CVEN5454/lectures/monty.pdf
+        from sympy.abc import A , B , C , O , D , E , F
+        from sympy import true
+        import numpy as np
+
+        p = Piter({A , B , C , O , D , E , F})
+        p.addConstraint((A & ~B & ~C) | (~A & B & ~C) | (~A & ~B & C))
+        p.addConstraint(~(O & B))
+        p.addConstraint(~(C & (~O))) # test without this constraint after new method for finding positive soluition
+        p.addP(A , true , 1.0 / 3.0)
+        p.addP(B , true , 1.0 / 3.0)
+        p.addP(C , true , 1.0 / 3.0)
+        p.addP(O , A , 0.5)
+        p.addP(O , C , 1.0)
+        p.finalize()
+
+        ab = p.getNumpy()
+
+        a = ab[: , :-1]
+        b = ab[: , -1]
+
+        x = p.getOptimalSolution()
+
+        num , dem = p.getNumDem(A , O)
+        dont_switch = np.sum(num * x) / np.sum(dem * x)
+
+        self.assertTrue(np.abs(dont_switch - 1.0 / 3.0) < TOLLERANCE)
+
+        num , dem = p.getNumDem(C , O)
+        switch = np.sum(num * x) / np.sum(dem * x)
+        
+        self.assertTrue(np.abs(switch - 2.0 / 3.0) < TOLLERANCE)
+
+
+    def test_unique_solution_MH(self):
+        # sauce : https://bechtel.colorado.edu/~balajir/CVEN5454/lectures/monty.pdf
+        from sympy.abc import A , B , C , O
+        from sympy import true
+        import numpy as np
+
+        p = Piter({A , B , C , O})
+        p.addConstraint((A & ~B & ~C) | (~A & B & ~C) | (~A & ~B & C))
+        p.addConstraint(~(O & B))
+        p.addP(A , true , 1.0 / 3.0)
+        p.addP(B , true , 1.0 / 3.0)
+        p.addP(C , true , 1.0 / 3.0)
+        p.addP(O , A , 0.5)
+        p.addP(O , C , 1.0)
+        p.finalize()
+
+        ab = p.getNumpy()
+
+        a = ab[: , :-1]
+        b = ab[: , -1]
+
+        x , residuals , rank , s = np.linalg.lstsq(a , b)
+
+        num , dem = p.getNumDem(A , O)
+        dont_switch = np.sum(num * x) / np.sum(dem * x)
+
+        self.assertTrue(np.abs(dont_switch - 1.0 / 3.0) < TOLLERANCE)
+
+        num , dem = p.getNumDem(C , O)
+        switch = np.sum(num * x) / np.sum(dem * x)
+        
+        self.assertTrue(np.abs(switch - 2.0 / 3.0) < TOLLERANCE)
+
+    def test_unique_solution_SC(self):
         from sympy.abc import d , m
         from sympy import true
 
