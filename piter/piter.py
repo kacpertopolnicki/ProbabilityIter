@@ -260,6 +260,151 @@ class Piter:
         for a , b in self.__probabilities_rows:
             print("P(" , a , "," , b , ") = " , self.__probabilities_rows[(a , b)][2])
 
+    def getPositiveSolition(self):
+        """
+        Attempts to find a positive solution.
+
+        Returns:
+            vector , null space
+
+        Raises: 
+            PiterException
+        """
+        if not self.__initialized:
+            raise PiterException("Attempting to get a numpy array from an uninitialized Piter object.")
+
+        # tollerance for comparing with 0
+        TOLLERANCE = 10e-16
+
+        # margin for calculating positive vector range
+        EPSILON = 0.000001
+ 
+        ab = self.getNumpy()
+
+        logger.debug("ab.shape : " + str(ab.shape))
+
+        # solving (a|-b).y == m.y == 0
+        # columns of ns contain the vectors in the null space basis of m
+
+        m = np.copy(ab)
+        m[: , -1] *= -1.0
+        ns = scipy.linalg.null_space(m)
+        logger.debug("ns.shape : " + str(ns.shape))
+        if ns.shape[1] == 1:
+            logger.debug("Only one null space vector, returning solution.")
+            sol = (ns / ns[-1])
+            if not np.all(sol >= -TOLLERANCE):
+                raise PiterException("Could not find all positive solution.")
+            return (sol , ns)
+
+        # calculating orthogonal complement (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
+        # columns in sn contain the vectors in the complement
+
+        sn = scipy.linalg.null_space(ns.T)
+        logger.debug("sn.shape : " + str(sn.shape))
+
+        vv = None
+        # linear optimization (see sauce https://math.stackexchange.com/questions/5128405/transformation-to-basis-with-all-positive-vectors)
+        # vv is the all positive solution (one dimensional vector) normalized so that the last coordinate is 1
+
+        c = np.ones(sn.shape[0] , dtype = NP_DTYPE)
+        aub = -np.eye(sn.shape[0] , dtype = NP_DTYPE)
+        bub = -np.ones(sn.shape[0] , dtype = NP_DTYPE)
+        aeq = sn.T
+        beq = np.zeros(sn.shape[1] , dtype = NP_DTYPE)
+        v = scipy.optimize.linprog(c , A_ub = aub , b_ub = bub , A_eq = aeq , b_eq = beq)
+        if not v.success:
+            raise PiterException("Failed to find positive vector.\n" + str(v))
+        vv = v.x
+        vv /= vv[-1]
+
+        return (vv , ns)
+
+    def optimizeEntropy(self , vv , ns , epochs = 2000 , stop = None , verbose = None , startparameters = None):
+        import torch
+
+        # tollerance for comparing with 0
+        TOLLERANCE = 10e-16
+
+        # margin for calculating positive vector range
+        EPSILON = 0.000001
+        
+        # optimizing entropy
+ 
+        def getMinMax(p , v , epsilon = EPSILON , maxrange = 10000000.):
+            """
+            Args:
+                p : Vector with all positive coordinates.
+                v : Vector which might notain negative coordinates.
+                epsilon (optional) : Tollerance.
+
+            Returns: 
+                (alpha_0 , alpha_1)
+                If alpha_0 < alpha < alpha_1 then
+                all components of the vector
+                  r = p + alpha v
+                are positive.
+            """
+            gt0 = v >= 0
+            valpha = (-p[gt0] / v[gt0])
+            minalpha = -maxrange
+            if valpha.numel() > 0:
+                minalpha = valpha.max()
+            lt0 = v < 0
+            vvalpha = (-p[lt0] / v[lt0])
+            maxalpha = maxrange
+            if vvalpha.numel() > 0:
+                maxalpha = vvalpha.min()
+            return (minalpha + epsilon , maxalpha - epsilon)
+
+        def vecFromParam(par , start , vecs):
+            if par.shape[0] != vecs.shape[1]:
+                raise PiterException("Number of parameters does not match the number of vectors.")
+            # normalize all parameters to 0 ... 1 range
+            parn = 0.5 * (torch.sin(par) + 1.0)
+            vvv = start
+            for i in range(par.shape[0]):
+                minalpha , maxalpha = getMinMax(vvv , vecs[: , i])
+                #logger.debug("minalpha : {} , maxalpha : {}".format(minalpha , maxalpha))
+                vvv = vvv + (minalpha + parn[i] * (maxalpha - minalpha)) * vecs[: , i]
+            return vvv
+
+        nst = torch.tensor(ns , dtype = TR_DTYPE)
+        vvt = torch.tensor(vv , dtype = TR_DTYPE)
+
+        if startparameters is None:
+            par = torch.zeros(ns.shape[1] , dtype = TR_DTYPE , requires_grad = True)
+            par_p = torch.tensor(1000.0 , dtype = TR_DTYPE) 
+        else:
+            par , par_p = startparameters
+
+        parameters = [par , par_p]
+        opt = OPTIMIZER(parameters , lr = LEARNING_RATE)
+
+        new = None
+        prevnorm = None
+        newnorm = None
+        for epoch in range(epochs):
+            if newnorm is not None:
+                prevnorm = newnorm.clone().detach()
+            new = vecFromParam(par , par_p * par_p * vvt, nst)
+            newnorm = new / new[-1]
+            if newnorm is not None and prevnorm is not None:
+                if stop is not None and torch.max(torch.abs((newnorm[:-1] - prevnorm[:-1]))).item() < stop:
+                    break
+            loss = (newnorm[:-1] * torch.log(newnorm[:-1])).sum() 
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
+            if isinstance(verbose , int) and epoch % verbose == 0:
+                logger.debug(str(epoch) + " " + str(epochs) + " " + str(-loss.item()))
+                #logger.debug("{} {}".format(epoch , torch.sum(newnorm[:-1])))
+
+        sol = newnorm.clone().detach().numpy()
+
+        return sol[:-1]
+
+
     def getOptimalSolution(self , epochs = 2000 , stop = None , verbose = None , startparameters = None , method = "default"):
         """
         Attempts to find a solution that maximizes entropy.
