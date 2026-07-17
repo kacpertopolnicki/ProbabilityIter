@@ -19,7 +19,7 @@ by a change to the prompt.
 
 To install dependencies, inside the activated environment, run:
 ```
-(temp) pip install numpy torch scipy sympy
+(temp) $ pip install numpy torch scipy sympy
 ```
 
 To check if the installation of dependencies was successfull, inside the *tests* directories
