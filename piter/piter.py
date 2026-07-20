@@ -260,7 +260,7 @@ class Piter:
         for a , b in self.__probabilities_rows:
             print("P(" , a , "," , b , ") = " , self.__probabilities_rows[(a , b)][2])
 
-    def getPositiveSolition(self):
+    def getPositiveSolution(self):
         """
         Attempts to find a positive solution.
 

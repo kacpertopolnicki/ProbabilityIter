@@ -36,11 +36,13 @@ The final example tests entropy optimization using the `getOptimalSolution` meth
 - `example_optimize.py`
 
 Note that the linear program produces solutions that are very close to the maximum entropy
-configutation. To better test entropy maximization see the code in the `publication_code`
-directory.
+configutation. To better test entropy maximization see the code in next section.
 
 # Publication Code
 
-The code from the publication TODO is available in the `publication_code` directory.
+The code from the publication TODO is available in
 
-
+- `publication_code_1.py`
+  - Monty Hall problem
+- `publication_code_2.py`
+  - entropy maximization

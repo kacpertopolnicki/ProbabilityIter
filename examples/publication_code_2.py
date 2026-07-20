@@ -13,7 +13,7 @@ p.addP(e & ~a & ~b & ~d & ~f & ~m & g & h, true , 0.02)
 p.addP(b & f & m & ~a & ~d & ~e & g & h , true , 0.02)
 p.finalize()
 
-vv , ns = p.getPositiveSolition()
+vv , ns = p.getPositiveSolution()
 
 print("vv.shape : " , vv.shape)
 print("ns.shape : " , ns.shape)
