@@ -46,3 +46,15 @@ The code from the publication TODO is available in
   - Monty Hall problem
 - `publication_code_2.py`
   - entropy maximization
+
+# Comparison with Monte Carlo simulation
+
+The two examples:
+
+- `compare_mc.py`
+- `compare_mc_1.py`
+
+contain a probabilistical description of two architecural structures.
+The comments in these files contain more details.
+The calculated probabilities are verified against a direct
+Monte Carlo simulation.
