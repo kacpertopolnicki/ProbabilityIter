@@ -83,7 +83,7 @@ The second example `compare_mc_1.py` considers a more complicated structure:
 ```
 composed of $7$ concrete blocks. Again each block is expected
 to fail in the next $100$ with some probability. The values
-of probability, including the vocational probability of the destruction
+of probability, including the conditional probability of the destruction
 of one block given another has failed, are defined in the code.
 
 Both programs:
