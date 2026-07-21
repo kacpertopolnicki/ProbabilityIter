@@ -1,3 +1,57 @@
+###############
+# DESCRIPTION #
+###############
+
+# This is one of two examples:
+# 
+# - `compare_mc.py` (this example)
+# - `compare_mc_1.py`
+# 
+# that contain a probabilistic description of two architectural structures.
+# 
+# The fist example `compare_mc.py` considers a simple structure built from two concrete blocks $C$ and $D$:
+# ```
+#     -----
+#     | D |
+#     -----
+#     | C |
+#   ----------
+# ```
+# Each of these two blocks is expected to fail in the
+# next $100$ years with some probability. In the code variables 
+# $c$, $d$ state the destruction of block $A$ , $B$.
+# Probabilities are assigned to 
+# $p(c | x)$ (the failure of block $C$), 
+# $p(d | x)$ (the failure of block $D$), and
+# $p(d | c x)$ (the destruction of block $D$ if block $C$ fails).
+# The $x$ symbolizes implicit assumptions.
+# 
+# The second example `compare_mc_1.py` considers a more complicated structure:
+# ```
+#                    --------------
+#                    |     G      |
+#     -----------------------------  -----
+#     |      E            |  |   |   | L |
+#     ---------------------  | F |   -----
+#     | C |    | D |         |   |   | K |
+#   -----------------------------------------
+# 
+# ```
+# composed of $7$ concrete blocks. Again each block is expected
+# to fail in the next $100$ with some probability. The values
+# of probability, including the vocational probability of the destruction
+# of one block given another has failed, are defined in the code.
+# 
+# Both programs:
+# 
+# 1. start with specifying the probability values for `Piter`,
+# 2. calculate the probability of each combination of failed / intact blocks using `Piter`,
+# 3. using the probabilities computed in 2 a Monte Carlo simulation is constructed,
+# 4. samples from the simulation 3 are used calculate the input probabilities in 1
+# 5. a comparison is of the input probabilities and estimates calculated from the samples
+#    is written to standard output
+
+
 import sys
 
 sys.path.append('..')

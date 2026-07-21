@@ -1,7 +1,7 @@
 # Sally Clark
 
 The following examples are loosely related to the 
-[Sally Clark](https://en.wikipedia.org/wiki/Sally_Clark) case.
+[Sally Clark](https://en.wikipedia.org/wiki/Sally_Clark) case:
 
 - `example_constraints.py`
 - `example_no_constraints.py`

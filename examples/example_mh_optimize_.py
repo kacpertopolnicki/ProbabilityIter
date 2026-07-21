@@ -1,3 +1,28 @@
+###############
+# DESCRIPTION #
+############### 
+
+# This is one of three examples related to the 
+# [Monty Hall problem](https://en.wikipedia.org/wiki/Monty_Hall_problem).
+# In the code we use the notation from 
+# [this lecture](https://bechtel.colorado.edu/~balajir/CVEN5454/lectures/monty.pdf).
+# The `sympy` symbols `A`, `B`, `C` are statemets about the placement
+# of the car: behind curtain 1 , 2 , 3 respectively. `O` symbolizes
+# the statement that Monty Hall opens curtain number 2.
+# 
+# - `example_mh.py` 
+#   - Simple setup, the comments in the code contain descriptions 
+#     of the assumed probabilities and constraints.
+# - `example_mh_optimize.py`
+#   - Additional statements, irrelevant to the problem are introduced
+#     to test optimization. The additional statements
+#     increase the size of the problem but the calculated probabilities
+#     are the same as in the basic example.
+# - `example_mh_optimize_.py` (this example)
+#   - Alternative problem setup to test optimization, note that for numerical purposes `p.addP(O , C , 0.99999)`
+#     is used instead of `p.addP(O , C , 1.0)`.
+
+
 import sys
 
 sys.path.append('..')
