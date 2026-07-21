@@ -23,7 +23,7 @@ import numpy as np
 # statements c , d , e , f , g , k mean the
 # descruction of the corresponding block.
 
-p = Piter({c , d , e , f , g , k})
+p = Piter({c , d , e , f , g , k , l})
 
 p.addP(c , true , 0.2)
 print("p(c | x) = 0.2")
